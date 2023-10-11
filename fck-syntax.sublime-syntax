@@ -1,0 +1,677 @@
+%YAML 1.2
+---
+name: fck
+file_extensions: [fck]
+scope: source.fck
+
+variables:
+  identifier: '[[:alpha:]][_[:alnum:]]*|_[_[:alnum:]]+'
+  self_idents: '\b[Ss]elf\b'
+  escaped_char: '\\([nrt0\"''\\]|x[0-7]\h|u\{(?:\h_*){1,6}\})'
+
+contexts:
+  main:
+    - include: statements
+
+  visibility:
+    - match: \b(pub|pri)\b
+      scope: storage.modifier.fck
+
+  statements:
+    - include: comments
+    - include: symbols
+    - match: '(?=(::\{))'
+      scope: storage.type.fck
+      push:
+        - include: keywords
+        - match: '\}'
+          pop: true
+    - match: '\('
+      scope: punctuation.section.group.begin.fck
+      push:
+        - match: '\)'
+          scope: punctuation.section.group.end.fck
+          pop: true
+        - include: statements
+    - include: module
+    - include: digit
+    - include: literals
+    - include: visibility
+    - include: function
+
+    - match: '\b(const)\s+({{identifier}})\s+({{identifier}})'
+      captures:
+        1: storage.type.fck
+        2: entity.name.type.fck
+        3: variable.other.fck
+
+    - match: \bextension\b
+      scope: storage.type.extension.fck
+      push: extension
+
+    - match: \bextend\b
+      scope: storage.type.extension.fck
+      push: extension-impl
+
+    - match: \brepeat\b
+      scope: keyword.control.fck
+      push: repeat
+
+    - match: \bmatch\b
+      scope: keyword.control.fck
+      push: match
+
+    - match: \bfor\b
+      scope: keyword.control.fck
+      push: for
+
+    - match: \bstruct\b
+      scope: storage.type.struct.fck
+      push: struct-identifier
+
+    - match: \benum\b
+      scope: storage.type.enum.fck
+      push: enum-identifier
+    - include: keywords
+      push: struct-value
+    - match: '{{self_idents}}'
+      scope: storage.type.fck
+    - match: '({{identifier}})\s*(\()'
+      scope: meta.function-call.fck
+      captures:
+        1: variable.function.fck
+        2: meta.group.fck punctuation.section.group.begin.fck
+      push:
+        - include: comments
+        - match: '\)'
+          scope: meta.group.fck punctuation.section.group.end.fck
+          pop: true
+        - match: ','
+          scope: punctuation.separator.fck
+        - include: statements
+    - match: '{{identifier}}'
+    - match: '\.'
+      scope: punctuation.separator.fck
+
+    - include: struct-value
+
+  keywords:
+    - match: \bset\b
+      scope: storage.type.fck
+    - match: \buse|to\b
+      scope: keyword.other.fck
+    - match: \bas|in\b
+      scope: keyword.operator.fck
+    - match: '\b(return|break|continue)\b'
+      scope: keyword.control.fck
+
+  type:
+    - match: '(?=($\n?))'
+      pop: true
+    - match: '\['
+      scope: punctuation.section.group.begin.fck
+      push:
+        - match: '\]'
+          scope: punctuation.section.group.end.fck
+          pop: true
+        - include: type
+    - match: 'Self'
+      scope: storage.type.fck
+      push:
+        - match: '(?=<)'
+          push:
+            generic-angles
+        - match: '.'
+          pop: true
+    - match: '{{identifier}}'
+      scope: entity.name.type.fck
+      push:
+        - match: '(?=<)'
+          push:
+            generic-angles
+        - match: '(?=($\n?))'
+          pop: true
+        - match: '.'
+          pop: true
+    - match: '::'
+      scope: punctuation.accessor.fck
+    - match: '\*'
+      scope: keyword.operator.fck
+    - match: '(?=\S)'
+      pop: true
+
+  module:
+    - match: \bmod\b
+      scope: storage.type.module.fck
+      push:
+        - match: '{{identifier}}'
+          scope: entity.name.namespace.fck
+        - match: '\}'
+          scope: meta.block.fck punctuation.section.block.end.fck
+          pop: 2
+        - match: '\{'
+          scope: punctuation.section.block.begin.fck
+          push:
+            - meta_scope: meta.block.fck
+            - match: '(?=\})'
+              pop: true
+            - include: statements
+
+
+  struct-value:
+    - include: path
+    - meta_scope: meta.struct.fck
+    - match: '\}'
+      scope: meta.block.fck punctuation.section.block.end.fck
+      pop: true
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push: struct-value-inner
+    - match: '(?=\S)'
+      pop: true
+
+  struct-value-inner:
+    - meta_scope: meta.block.fck
+    - include: comments
+    - include: visibility
+    - include: function
+    - match: '\b({{identifier}})\s*(:)'
+      captures:
+        1: variable.parameter.fck
+        2: punctuation.separator.fck
+      push:
+        - include: statements
+        - match: ','
+          pop: true
+        - match: '(?=\})'
+          pop: 2
+    - match: '(?=\})'
+      pop: true
+
+  pattern-param:
+    # A pattern used in a function or closure parameter.
+    - include: comments
+    - match: '\*'
+      scope: keyword.operator.fck
+    - match: '\bself\b'
+      scope: storage.type.fck
+    - match: '\b({{identifier}})\s+({{identifier}})'
+      captures:
+        1: entity.name.type.fck
+        2: variable.other.fck
+
+  comments:
+    - include: block-comments
+    - match: "//[!/]"
+      scope: punctuation.definition.comment.fck
+      push:
+        - meta_scope: comment.line.documentation.fck
+        - match: '(@param)\s*\('
+          captures:
+            1: comment.line.documentation.decorator.fck
+          push:
+            - match: '{{identifier}}'
+            - match: '\)'
+              pop: true
+        - match: $\n?
+          pop: true
+    - match: //
+      scope: punctuation.definition.comment.fck
+      push:
+        - meta_scope: comment.line.double-slash.fck
+        - match: $\n?
+          pop: true
+
+  block-comments:
+    - match: '/\*[!\*][^\*/]'
+      scope: punctuation.definition.comment.fck
+      push:
+        - meta_scope: comment.block.documentation.fck
+        - match: \*/
+          scope: punctuation.definition.comment.fck
+          pop: true
+        # Javadoc style comment with leading * on each line. Helps with word-wrapping.
+        - match: ^\s*(\*)(?!/)
+          captures:
+            1: punctuation.definition.comment.fck
+        - include: block-comments
+    - match: /\*
+      scope: punctuation.definition.comment.fck
+      push:
+        - meta_scope: comment.block.fck
+        - match: \*/
+          scope: punctuation.definition.comment.fck
+          pop: true
+        - include: block-comments
+
+  match:
+    - include: comments
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push:
+        - include: comments
+        - match: '=>'
+          scope: keyword.operator.rust
+          push:
+            - match: '$\n?'
+              pop: true
+            - include: statements
+        - match: '(?=\})'
+          pop: true
+        - include: literals
+    - match: '\}'
+      scope: punctuation.section.block.end.fck
+      pop: true
+
+  function:
+    - match: '\b(fn)\s+({{identifier}})'
+      captures:
+        1: storage.type.function.fck
+        2: entity.name.function.fck
+      push: fn-parameters
+
+  fn-parameters:
+    - meta_scope: meta.function.fck
+    - match: '\)'
+      scope: meta.function.parameters.fck punctuation.section.parameters.end.fck
+      set: fn-return
+    - match: '\('
+      scope: punctuation.section.parameters.begin.fck
+      push:
+        - meta_scope: meta.function.parameters.fck
+        - include: comments
+        - match: '(?=\))'
+          pop: true
+        - include: pattern-param
+
+  fn-return:
+    - meta_scope: meta.function.fck
+    - include: comments
+    - match: '(?=\{)'
+      set: fn-body
+    - match: '->'
+      scope: punctuation.separator.fck
+      push:
+        - include: type
+        - match: '(?=\S)'
+          pop: true
+    # Escape for incomplete expression, or ';'
+    - match: '(?=\S)'
+      pop: true
+
+  fn-body:
+    - include: comments
+    - meta_scope: meta.function.fck
+    - match: '\}'
+      scope: meta.block.fck punctuation.section.block.end.fck
+      pop: true
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push:
+        - meta_scope: meta.block.fck
+        - match: '(?=\})'
+          pop: true
+        - include: statements
+
+  struct-identifier:
+    - meta_scope: meta.struct.fck
+    - include: comments
+    - match: '{{identifier}}'
+      scope: entity.name.struct.fck
+      set:
+        - meta_scope: meta.struct.fck meta.generic.fck
+        # - match: '(?=<)'
+        #   push: generic-angles
+        - match: '(?=\{)'
+          push: struct-classic
+        - match: '\}'
+          pop: true
+        - match: '(?=\S)'
+          pop: true
+
+  struct-classic:
+    - meta_scope: meta.struct.fck
+    - match: '\}'
+      scope: meta.block.fck punctuation.section.block.end.fck
+      pop: true
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push: struct-classic-body
+    - match: '(?=\S)'
+      # Abort for an invalid match.
+      pop: true
+
+  struct-classic-body:
+    - meta_scope: meta.block.fck
+    - include: comments
+    - include: visibility
+    - include: function
+    - match: \bproperties\b
+      scope: keyword.other.fck meta.struct.properties.fck
+      push: struct-classic-properties
+    - match: '(?=\})'
+      pop: true
+    - match: '(?=\S)'
+      # Abort for an invalid match.
+      pop: true
+
+  struct-classic-properties:
+    - meta_scope: meta.struct.properties.fck
+    - match: '\}'
+      scope: meta.block.fck punctuation.section.block.end.fck
+      pop: true
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push: struct-classic-body-properties
+
+  struct-classic-body-properties:
+    - include: visibility
+    - match: '({{identifier}})\s+({{identifier}})'
+      captures:
+        1: entity.name.type.fck
+        2: variable.other.member.fck
+    - meta_scope: meta.struct.properties.fck
+    - match: '(?=\})'
+      pop: true
+    - match: '(?=\S)'
+      pop: true
+
+  enum-identifier:
+    - meta_scope: meta.struct.fck
+    - include: comments
+    - match: '{{identifier}}'
+      scope: entity.name.struct.fck
+      set:
+        - meta_scope: meta.struct.fck meta.generic.fck
+        # - match: '(?=<)'
+        #   push: generic-angles
+        - match: '(?=\{)'
+          push: enum-classic
+        - match: '\}'
+          pop: true
+        - match: '(?=\S)'
+          pop: true
+
+  enum-classic:
+    - meta_scope: meta.struct.fck
+    - match: '\}'
+      scope: meta.block.fck punctuation.section.block.end.fck
+      pop: true
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push: enum-classic-body
+    - match: '(?=\S)'
+      # Abort for an invalid match.
+      pop: true
+
+  enum-classic-body:
+    - meta_scope: meta.block.fck
+    - include: comments
+    - include: visibility
+    - include: function
+    - match: \bvariants\b
+      scope: keyword.other.fck meta.struct.properties.fck
+      push: enum-classic-variants
+    - match: '(?=\})'
+      pop: true
+    - match: '(?=\S)'
+      # Abort for an invalid match.
+      pop: true
+
+  enum-classic-variants:
+    - include: comments
+    - meta_scope: meta.struct.properties.fck
+    - match: '\}'
+      scope: meta.block.fck punctuation.section.block.end.fck
+      pop: true
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push: enum-classic-body-properties
+
+  enum-classic-body-properties:
+    - include: comments
+    - meta_scope: meta.enum.variants.fck
+    - match: '({{identifier}})\s*(?=\{)'
+      captures:
+        1: storage.type.source.fck
+      push:
+        - meta_scope: meta.enum.variants.fck
+        - match: '\}'
+          scope: meta.block.fck punctuation.section.block.end.fck
+          pop: true
+        - match: '\{'
+          scope: punctuation.section.block.begin.fck
+          push: enum-classic-body-property-struct
+    - match: '({{identifier}})\s*(?=\()'
+      captures:
+        1: storage.type.source.fck
+      push:
+        - meta_scope: meta.enum.variants.fck
+        - match: '\)'
+          scope: meta.block.fck punctuation.section.block.end.fck
+          pop: true
+        - match: '\('
+          scope: punctuation.section.block.begin.fck
+          push: enum-classic-body-property-tuple
+    - match: "{{identifier}}"
+      scope: storage.type.source.fck
+    - match: '(?=\})'
+      pop: true
+    - match: '(?=\S)'
+      pop: true
+
+  enum-classic-body-property-struct:
+    - include: comments
+    - match: '({{identifier}})\s+({{identifier}})'
+      captures:
+        1: entity.name.type.fck
+        2: variable.other.member.fck
+    - meta_scope: meta.struct.properties.fck
+    - match: '(?=\})'
+      pop: true
+    - match: '(?=\S)'
+      pop: true
+
+  enum-classic-body-property-tuple:
+    - include: types
+    - match: ','
+    - meta_scope: meta.struct.properties.fck
+    - match: '(?=\))'
+      pop: true
+    - match: '(?=\S)'
+      pop: true
+
+  generic-angles:
+    - meta_scope: meta.generic.fck
+    - match: '>'
+      scope: punctuation.definition.generic.end.fck
+      pop: true
+    - match: '<'
+      scope: punctuation.definition.generic.begin.fck
+      push: generic-angles-contents
+    - match: '(?=\S)'
+      pop: true
+
+  generic-angles-contents:
+    - include: comments
+    - match: '(?=>)'
+      pop: true
+    - match: '<'
+      scope: punctuation.definition.generic.begin.fck
+      push:
+        - match: '>'
+          scope: punctuation.definition.generic.end.fck
+          pop: true
+        - include: generic-angles-contents
+    - match: '{{identifier}}'
+      scope: storage.type.fck
+    - match: ','
+      scope: punctuation.separator.fck
+    - match: '\+'
+      scope: keyword.operator.fck
+    - match: '(?=\S)'
+      pop: true
+
+  repeat:
+    - include: comments
+    - match: '{{identifier}}'
+      scope: variable.other.fck
+      push:
+        - match: '(?=\})'
+          scope: punctuation.section.block.end.fck
+          pop: true
+        - match: '\{'
+          scope: punctuation.section.block.begin.fck
+          push:
+            - match: '(?=\})'
+              pop: true
+            - include: statements
+    - match: '\}'
+      scope: punctuation.section.block.end.fck
+      pop: true
+
+  for:
+    - include: comments
+    - match: '\}'
+      scope: punctuation.section.block.end.fck
+      pop: true
+    - match: '({{identifier}})\s+(in)'
+      captures:
+        1: variable.other.fck
+        2: keyword.operator.fck
+      push:
+        - match: '(?=\})'
+          pop: true
+        - match: '\{'
+          scope: punctuation.section.block.begin.fck
+          push:
+            - match: '(?=\})'
+              pop: true
+            - include: statements
+        - include: statements
+
+  extension:
+    - include: comments
+    - match: '\}'
+      scope: punctuation.section.block.end.fck
+      pop: true
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push:
+        - include: comments
+        - match: '(?=\})'
+          pop: true
+        - include: extension_inner
+    - include: type
+    - match: '{{identifier}}'
+      scope: variable.other.fck
+
+  extension_inner:
+    - include: comments
+    - match: '\b(const)\s+({{identifier}})\s+({{identifier}})'
+      captures:
+        1: storage.type.fck
+        2: entity.name.type.fck
+        3: variable.other.fck
+    - match: '\b(fn)\s+({{identifier}})'
+      captures:
+        1: storage.type.function.fck
+        2: entity.name.function.fck
+      push:
+        - meta_scope: meta.function.fck
+        - match: '\)'
+          scope: meta.function.parameters.fck punctuation.section.parameters.end.fck
+          set: extension-fn-return
+        - match: '\('
+          scope: punctuation.section.parameters.begin.fck
+          push:
+            - meta_scope: meta.function.parameters.fck
+            - include: comments
+            - match: '(?=\))'
+              pop: true
+            - include: pattern-param
+
+  extension-fn-return:
+    - meta_scope: meta.function.fck
+    - include: comments
+    - match: '(?=\{)'
+      set: fn-body
+    - match: '->\s*'
+      scope: punctuation.separator.fck
+      push:
+        - include: type
+        - match: '(?=\S)'
+          pop: true
+    - match: '(?=\S)'
+      pop: true
+
+  extension-impl:
+    - include: comments
+    - match: \bwith\b
+      scope: keyword.operator.fck
+    - match: '\}'
+      scope: punctuation.section.block.end.fck
+      pop: true
+    - match: '\{'
+      scope: punctuation.section.block.begin.fck
+      push:
+        - include: comments
+        - match: '(?=\})'
+          pop: true
+        - include: statements
+    - include: type
+
+  digit:
+    - match: '0x[0-9a-fA-F_]+'
+      scope: constant.numeric.integer.hexidecimal.fck
+    - match: '0b[0-1_]+'
+      scope: constant.numeric.integer.binary.fck
+    - match: '0o[0-7_]+'
+      scope: constant.numeric.integer.octal.fck
+    - match: '[0-9_]+'
+      scope: constant.numeric.integer.fck
+
+  literals:
+    - include: string
+    - include: digit
+    - match: '\b(true|false)\b'
+      scope: constant.language.booleal.fck
+    - match: '\['
+      scope: punctuation.section.group.begin.fck
+      push:
+        - match: '\]'
+          scope: punctuation.section.group.end.fck
+          pop: true
+        - match: ','
+        - include: statements
+
+  symbols:
+    - match: '='
+      scope: keyword.operator.assignment.fck
+
+    - match: '[<>]'
+      scope: keyword.operator.comparison.rust
+
+    - match: '[-+%/*]'
+      scope: keyword.operator.arithmetic.rust
+  
+  escaped-char:
+    - match: '{{escaped_char}}'
+      scope: constant.character.escape.rust
+    - match: '\\u\{[^}]*\}'
+      scope: invalid.illegal.character.escape.rust
+    - match: '\\.'
+      scope: invalid.illegal.character.escape.rust
+
+  string:
+    - match: '"'
+      scope: punctuation.definition.string.begin.fck
+      push:
+        - meta_include_prototype: false
+        - meta_scope: string.quoted.double.fck
+        - match: '"'
+          scope: punctuation.definition.string.end.fck
+          pop: true
+        - include: escaped-char
+        - match: '(\\)$'
+          scope: punctuation.separator.continuation.line.fck

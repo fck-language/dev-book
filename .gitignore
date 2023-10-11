@@ -1,0 +1,6 @@
+**/*.pdf
+**/*.sh
+**/.DS_Store
+.vscode
+.history
+.idea
